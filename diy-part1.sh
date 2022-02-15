@@ -16,15 +16,7 @@
 # Add a feed source
 echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.default
 echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
-git clone https://github.com/Leo-Jo-My/luci-theme-opentomato.git packages/lean
-git clone https://github.com/Leo-Jo-My/luci-theme-opentomato.git packages/lean
-rm -fr feeds/packages/net/miniupnpd
-svn co https://github.com/Ljzkirito/openwrt-packages/trunk/miniupnpd feeds/packages/net/miniupnpd
-mkdir package/luci-app-openclash
-cd package/luci-app-openclash
-git init
-git remote add -f origin https://github.com/vernesong/OpenClash.git
-git config core.sparsecheckout true
-echo "luci-app-openclash" >> .git/info/sparse-checkout
-git pull --depth 1 origin master
-git branch --set-upstream-to=origin/master master
+git clone https://github.com/Leo-Jo-My/luci-theme-opentomato.git package/lean/luci-thmem-opentomato
+git clone https://github.com/Leo-Jo-My/luci-theme-opentomcat.git package/lean/luci-theme-opentomcat
+git clone https://github.com/vernesong/OpenClash.git 
+mv OpenClash/luci-app-openclash package/lean/
