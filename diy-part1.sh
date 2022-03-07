@@ -20,4 +20,4 @@ git clone https://github.com/Leo-Jo-My/luci-theme-opentomato.git package/lean/lu
 git clone https://github.com/Leo-Jo-My/luci-theme-opentomcat.git package/lean/luci-theme-opentomcat
 git clone https://github.com/vernesong/OpenClash.git 
 mv OpenClash/luci-app-openclash package/lean/
-wget -P /package/kernel/mac80211/patches/rt2x00/ https://raw.githubusercontent.com/WYC-2020/lede/893ba3d9e6984f90560a0f93921f651ee3ae96cf/package/kernel/mac80211/patches/rt2x00/651-rt2x00-driver-compile-with-kernel-5.15.patch 
+wget -P package/kernel/mac80211/patches/rt2x00/ https://raw.githubusercontent.com/WYC-2020/lede/893ba3d9e6984f90560a0f93921f651ee3ae96cf/package/kernel/mac80211/patches/rt2x00/651-rt2x00-driver-compile-with-kernel-5.15.patch 
