@@ -21,6 +21,6 @@ echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.defau
 rm -rf feeds/luci/themes/luci-theme-argon
 git clone -b 18.06 https://github.com/jerrykuku/luci-theme-argon.git feeds/luci/themes/luci-theme-argon
 #git clone https://github.com/vernesong/OpenClash.git 
-git clone --branch master --depth=1 https://github.com/vernesong/OpenClash.git feeds/luci/applications/openclash
-#mv OpenClash/luci-app-openclash package/lean/
+git clone --branch master --depth=1 https://github.com/vernesong/OpenClash.git
+mv OpenClash/luci-app-openclash feeds/luci/applications
 #wget -P package/kernel/mac80211/patches/rt2x00/ https://raw.githubusercontent.com/WYC-2020/lede/893ba3d9e6984f90560a0f93921f651ee3ae96cf/package/kernel/mac80211/patches/rt2x00/651-rt2x00-driver-compile-with-kernel-5.15.patch 
