@@ -14,7 +14,7 @@
 #sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
 
 # 移除要替换的包
-rm -rf feeds/packages/net/mosdns
+# rm -rf feeds/packages/net/mosdns
 rm -rf feeds/luci/themes/luci-theme-argon
 rm -rf feeds/luci/themes/luci-theme-netgear
 rm -rf feeds/luci/applications/luci-app-mosdns
