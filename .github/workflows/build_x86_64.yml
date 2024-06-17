@@ -1,4 +1,5 @@
 name: Build X86_64 Version OpenWrt
+#参考自https://github.com/rrtft/ActionsBuildOpenWRT
 
 on:
   repository_dispatch:
