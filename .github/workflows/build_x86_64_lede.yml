@@ -24,10 +24,24 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
 
-      # ---------- 磁盘空间释放（基础） ----------
-      - name: Free disk space with maximize-build-space
+      # ---------- 调试：列出根目录文件 ----------
+      - name: List repository files
+        run: |
+          echo "Contents of $GITHUB_WORKSPACE:"
+          ls -la
+          echo "--- Check required files ---"
+          for f in .config diy-part1.sh diy-part2.sh; do
+            if [ -f "$f" ]; then
+              echo "✅ $f exists"
+            else
+              echo "❌ $f is missing!"
+            fi
+          done
+
+      # ---------- 磁盘清理 ----------
+      - name: Free disk space
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 2048
@@ -39,27 +53,21 @@ jobs:
           remove-docker-images: 'true'
           remove-packages: 'google-cloud-sdk google-chrome-stable firefox powershell microsoft-edge-stable mysql* azure-cli'
 
-      # ---------- 额外手动清理大型目录 ----------
-      - name: Additional disk cleanup
+      - name: Additional cleanup
         run: |
-          echo "Before additional cleanup:"
-          df -hT
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/share/swift /usr/local/.ghcup \
                       /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules \
                       /usr/share/gradle-* /usr/share/apache-maven-* /usr/local/graalvm /opt/hostedtoolcache
           sudo docker system prune -a -f || true
           sudo apt clean
           sudo apt autoremove -y
-          echo "After additional cleanup:"
           df -hT
 
-      # ---------- 修复 dpkg ----------
       - name: Fix dpkg state
         run: |
           sudo dpkg --configure -a
           sudo apt-get install -f -y
 
-      # ---------- 安装编译依赖（不安装推荐包） ----------
       - name: Install build dependencies
         run: |
           sudo apt update
@@ -75,7 +83,6 @@ jobs:
           sudo apt clean
           sudo timedatectl set-timezone "$TZ"
 
-      # ---------- 缓存 ----------
       - name: Cache OpenWrt download
         uses: actions/cache@v4
         id: cache-dl
@@ -97,11 +104,26 @@ jobs:
       - name: Clone source code
         run: git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
 
-      - name: Load custom feeds
+      # ---------- 安全加载自定义文件 ----------
+      - name: Load custom feeds.conf (optional)
         run: |
-          [ -e $FEEDS_CONF ] && cp $FEEDS_CONF openwrt/feeds.conf.default
-          chmod +x $DIY_P1_SH
-          cd openwrt && $GITHUB_WORKSPACE/$DIY_P1_SH
+          if [ -f "$FEEDS_CONF" ]; then
+            cp "$FEEDS_CONF" openwrt/feeds.conf.default
+            echo "✅ Loaded custom feeds.conf"
+          else
+            echo "ℹ️ No custom feeds.conf, using default"
+          fi
+
+      - name: Execute diy-part1.sh (optional)
+        run: |
+          if [ -f "$DIY_P1_SH" ]; then
+            chmod +x "$DIY_P1_SH"
+            cd openwrt && "$GITHUB_WORKSPACE/$DIY_P1_SH"
+            echo "✅ Executed diy-part1.sh"
+          else
+            echo "❌ diy-part1.sh not found! Please ensure it is in the repository root."
+            exit 1
+          fi
 
       - name: Update feeds
         working-directory: openwrt
@@ -111,12 +133,33 @@ jobs:
         working-directory: openwrt
         run: ./scripts/feeds install -a
 
-      - name: Load custom configuration
+      - name: Copy files directory (optional)
         run: |
-          [ -e files ] && cp -r files openwrt/files
-          [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
-          chmod +x $DIY_P2_SH
-          cd openwrt && $GITHUB_WORKSPACE/$DIY_P2_SH
+          if [ -d "files" ]; then
+            cp -r files openwrt/
+            echo "✅ Copied files directory"
+          else
+            echo "ℹ️ No files directory"
+          fi
+
+      - name: Load .config
+        run: |
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ $CONFIG_FILE is missing! Cannot proceed."
+            exit 1
+          fi
+          cp "$CONFIG_FILE" openwrt/.config
+          echo "✅ Loaded .config"
+
+      - name: Execute diy-part2.sh (optional)
+        run: |
+          if [ -f "$DIY_P2_SH" ]; then
+            chmod +x "$DIY_P2_SH"
+            cd openwrt && "$GITHUB_WORKSPACE/$DIY_P2_SH"
+            echo "✅ Executed diy-part2.sh"
+          else
+            echo "⚠️ diy-part2.sh not found, skipping"
+          fi
 
       - name: Download package sources
         working-directory: openwrt
