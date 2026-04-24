@@ -11,23 +11,23 @@ env:
   CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false          # 是否上传完整 bin 目录（体积大）
-  UPLOAD_FIRMWARE: true          # 上传固件目录
-  UPLOAD_COWTRANSFER: false      # 上传到 cowtransfer
-  UPLOAD_WETRANSFER: false       # 上传到 wetransfer
-  UPLOAD_RELEASE: true           # 创建 GitHub Release
-  USE_CCACHE: true               # 启用 ccache 加速
+  UPLOAD_BIN_DIR: false
+  UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: false
+  UPLOAD_WETRANSFER: false
+  UPLOAD_RELEASE: true
+  USE_CCACHE: true
   TZ: Asia/Shanghai
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@main
 
-      # ---------- 磁盘空间释放 ----------
-      - name: Free disk space before build
+      # ---------- 磁盘空间释放（基础） ----------
+      - name: Free disk space with maximize-build-space
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 2048
@@ -37,16 +37,33 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
-          remove-packages: 'google-cloud-sdk google-chrome-stable firefox powershell microsoft-edge-stable'
+          remove-packages: 'google-cloud-sdk google-chrome-stable firefox powershell microsoft-edge-stable mysql* azure-cli'
 
-      - name: Show available disk space
-        run: df -hT
+      # ---------- 额外手动清理大型目录 ----------
+      - name: Additional disk cleanup
+        run: |
+          echo "Before additional cleanup:"
+          df -hT
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/share/swift /usr/local/.ghcup \
+                      /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules \
+                      /usr/share/gradle-* /usr/share/apache-maven-* /usr/local/graalvm /opt/hostedtoolcache
+          sudo docker system prune -a -f || true
+          sudo apt clean
+          sudo apt autoremove -y
+          echo "After additional cleanup:"
+          df -hT
 
-      # ---------- 安装编译依赖 ----------
+      # ---------- 修复 dpkg ----------
+      - name: Fix dpkg state
+        run: |
+          sudo dpkg --configure -a
+          sudo apt-get install -f -y
+
+      # ---------- 安装编译依赖（不安装推荐包） ----------
       - name: Install build dependencies
         run: |
           sudo apt update
-          sudo apt install -y --fix-missing \
+          sudo apt install -y --no-install-recommends --fix-missing \
             ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
             bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
             genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
@@ -56,12 +73,9 @@ jobs:
             swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
           sudo apt autoremove -y
           sudo apt clean
-          # 清理残留的大目录
-          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet /usr/local/graalvm /usr/local/.ghcup \
-                      /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules
           sudo timedatectl set-timezone "$TZ"
 
-      # ---------- 缓存加速（dl 目录 + ccache） ----------
+      # ---------- 缓存 ----------
       - name: Cache OpenWrt download
         uses: actions/cache@v4
         id: cache-dl
@@ -80,11 +94,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ccache-
 
-      # ---------- 克隆源码 ----------
       - name: Clone source code
         run: git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
 
-      # ---------- 自定义 feeds ----------
       - name: Load custom feeds
         run: |
           [ -e $FEEDS_CONF ] && cp $FEEDS_CONF openwrt/feeds.conf.default
@@ -99,7 +111,6 @@ jobs:
         working-directory: openwrt
         run: ./scripts/feeds install -a
 
-      # ---------- 加载配置 ----------
       - name: Load custom configuration
         run: |
           [ -e files ] && cp -r files openwrt/files
@@ -107,17 +118,14 @@ jobs:
           chmod +x $DIY_P2_SH
           cd openwrt && $GITHUB_WORKSPACE/$DIY_P2_SH
 
-      # ---------- 下载源码包 ----------
       - name: Download package sources
         working-directory: openwrt
         run: |
           make defconfig
           make download -j$(nproc)
-          # 删除下载失败的不完整文件
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      # ---------- 编译固件 ----------
       - name: Compile firmware
         id: compile
         working-directory: openwrt
@@ -130,7 +138,6 @@ jobs:
           echo "Starting compilation with $(nproc) threads"
           make -j$(nproc) || make -j1 || make -j1 V=s
           echo "status=success" >> $GITHUB_OUTPUT
-          # 生成设备名称（兼容 x86_64 无 DEVICE 的情况）
           DEVICE=$(grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/')
           if [ -z "$DEVICE" ]; then
             DEVICE="x86_64"
@@ -142,7 +149,6 @@ jobs:
         if: always()
         run: df -hT
 
-      # ---------- 上传 bin 目录（可选） ----------
       - name: Upload bin directory
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
@@ -150,13 +156,11 @@ jobs:
           name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
 
-      # ---------- 整理固件文件 ----------
       - name: Organize firmware files
         id: organize
         if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
         run: |
           cd openwrt/bin/targets
-          # 自动找到固件目录（如 x86/64）
           TARGET_DIR=$(find . -type d -name "*" | grep -E 'x86|generic' | head -1)
           if [ -z "$TARGET_DIR" ]; then
             echo "Firmware directory not found!"
@@ -174,28 +178,6 @@ jobs:
           name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
 
-      # ---------- 第三方上传（cowtransfer/wetransfer） ----------
-      - name: Upload to cowtransfer
-        id: cowtransfer
-        if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
-        run: |
-          curl -fsSL https://git.io/file-transfer | sh
-          ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
-          URL=$(grep -oP 'https://cowtransfer.com/s/[a-f0-9]+' cowtransfer.log | head -1)
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "::notice file=cowtransfer.com::Upload success: $URL"
-
-      - name: Upload to WeTransfer
-        id: wetransfer
-        if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
-        run: |
-          curl -fsSL https://git.io/file-transfer | sh
-          ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
-          URL=$(grep -oP 'https://wetransfer.com/downloads/[a-f0-9]+' wetransfer.log | head -1)
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "::notice file=wetransfer.com::Upload success: $URL"
-
-      # ---------- 创建 GitHub Release ----------
       - name: Generate release tag and notes
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
@@ -210,8 +192,6 @@ jobs:
           - Files in this release:
           $(cd ${{ env.FIRMWARE }} && ls -lh)
           EOF
-          [ "${{ env.UPLOAD_COWTRANSFER }}" = "true" ] && echo "🔗 [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
-          [ "${{ env.UPLOAD_WETRANSFER }}" = "true" ] && echo "🔗 [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
@@ -224,7 +204,6 @@ jobs:
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
 
-      # ---------- 清理旧产物 ----------
       - name: Delete outdated workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         with:
