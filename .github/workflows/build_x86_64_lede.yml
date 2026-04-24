@@ -1,4 +1,4 @@
-name: Build X86_64 OpenWrt (Optimized)
+name: Build X86_64 OpenWrt (Safe - No LVM Overlay)
 
 on:
   repository_dispatch:
@@ -26,44 +26,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ---------- 调试：列出根目录文件 ----------
+      # ---------- 调试：确认文件存在 ----------
       - name: List repository files
         run: |
-          echo "Contents of $GITHUB_WORKSPACE:"
+          echo "Current working directory: $PWD"
           ls -la
-          echo "--- Check required files ---"
+          echo "--- Required files ---"
           for f in .config diy-part1.sh diy-part2.sh; do
             if [ -f "$f" ]; then
-              echo "✅ $f exists"
+              echo "✅ $f found"
             else
-              echo "❌ $f is missing!"
+              echo "❌ $f missing"
             fi
           done
 
-      # ---------- 磁盘清理 ----------
-      - name: Free disk space
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 2048
-          swap-size-mb: 512
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-          remove-packages: 'google-cloud-sdk google-chrome-stable firefox powershell microsoft-edge-stable mysql* azure-cli'
-
-      - name: Additional cleanup
+      # ---------- 安全清理磁盘空间（不覆盖工作目录） ----------
+      - name: Free disk space by removing large system tools
         run: |
+          echo "Before cleanup:"
+          df -hT
+          # 删除 GitHub Runner 自带的大型组件
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/share/swift /usr/local/.ghcup \
                       /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules \
                       /usr/share/gradle-* /usr/share/apache-maven-* /usr/local/graalvm /opt/hostedtoolcache
+          # 清理 Docker 镜像和容器
           sudo docker system prune -a -f || true
+          # 清除 APT 缓存
           sudo apt clean
           sudo apt autoremove -y
+          echo "After cleanup:"
           df -hT
 
-      - name: Fix dpkg state
+      - name: Fix dpkg state (if needed)
         run: |
           sudo dpkg --configure -a
           sudo apt-get install -f -y
@@ -104,30 +98,25 @@ jobs:
       - name: Clone source code
         run: git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
 
-      # ---------- 安全加载自定义文件 ----------
+      # ---------- 加载自定义文件 ----------
       - name: Load custom feeds.conf (optional)
         run: |
-          pwd
-          ls -la
           if [ -f "$FEEDS_CONF" ]; then
             cp "$FEEDS_CONF" openwrt/feeds.conf.default
             echo "✅ Loaded custom feeds.conf"
           else
-            echo "ℹ️ No custom feeds.conf, using default"
+            echo "ℹ️ No custom feeds.conf"
           fi
 
-      - name: Execute diy-part1.sh (optional)
+      - name: Execute diy-part1.sh
         run: |
-          pwd
-          ls -la
-          if [ -f "$DIY_P1_SH" ]; then
-            chmod +x "$DIY_P1_SH"
-            cd openwrt && "$GITHUB_WORKSPACE/$DIY_P1_SH"
-            echo "✅ Executed diy-part1.sh"
-          else
-            echo "❌ diy-part1.sh not found! Please ensure it is in the repository root."
+          if [ ! -f "$DIY_P1_SH" ]; then
+            echo "❌ diy-part1.sh not found! Please check the repository root."
             exit 1
           fi
+          chmod +x "$DIY_P1_SH"
+          cd openwrt && "$GITHUB_WORKSPACE/$DIY_P1_SH"
+          echo "✅ diy-part1.sh executed"
 
       - name: Update feeds
         working-directory: openwrt
@@ -142,14 +131,12 @@ jobs:
           if [ -d "files" ]; then
             cp -r files openwrt/
             echo "✅ Copied files directory"
-          else
-            echo "ℹ️ No files directory"
           fi
 
       - name: Load .config
         run: |
           if [ ! -f "$CONFIG_FILE" ]; then
-            echo "❌ $CONFIG_FILE is missing! Cannot proceed."
+            echo "❌ .config not found! Cannot proceed."
             exit 1
           fi
           cp "$CONFIG_FILE" openwrt/.config
@@ -160,9 +147,9 @@ jobs:
           if [ -f "$DIY_P2_SH" ]; then
             chmod +x "$DIY_P2_SH"
             cd openwrt && "$GITHUB_WORKSPACE/$DIY_P2_SH"
-            echo "✅ Executed diy-part2.sh"
+            echo "✅ diy-part2.sh executed"
           else
-            echo "⚠️ diy-part2.sh not found, skipping"
+            echo "ℹ️ diy-part2.sh not found, skipping"
           fi
 
       - name: Download package sources
