@@ -30,7 +30,6 @@ jobs:
       - name: List repository files
         run: |
           echo "Contents of $GITHUB_WORKSPACE:"
-          pwd
           ls -la
           echo "--- Check required files ---"
           for f in .config diy-part1.sh diy-part2.sh; do
@@ -109,6 +108,7 @@ jobs:
       - name: Load custom feeds.conf (optional)
         run: |
           pwd
+          ls -la
           if [ -f "$FEEDS_CONF" ]; then
             cp "$FEEDS_CONF" openwrt/feeds.conf.default
             echo "✅ Loaded custom feeds.conf"
@@ -119,6 +119,7 @@ jobs:
       - name: Execute diy-part1.sh (optional)
         run: |
           pwd
+          ls -la
           if [ -f "$DIY_P1_SH" ]; then
             chmod +x "$DIY_P1_SH"
             cd openwrt && "$GITHUB_WORKSPACE/$DIY_P1_SH"
