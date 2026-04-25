@@ -1,4 +1,4 @@
-name: Build X86_64 Version OpenWrt ols
+name: Build X86_64 Version OpenWrt old
 #参考自https://github.com/rrtft/ActionsBuildOpenWRT
 
 on:
@@ -30,6 +30,11 @@ jobs:
         echo "=============================================================================="
         df -hT
         echo "=============================================================================="
+    - name: Free up disk space
+      run: |
+        sudo apt-get clean
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        docker rmi $(docker images -q) || true
 
     - name: "Optimize Disk Space"
       uses: "hugoalh/disk-space-optimizer-ghaction@v0.8.1"
